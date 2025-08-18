@@ -1,11 +1,15 @@
 services:
   - type: web
-    name: data-analyst
+    name: data-analyst_tds2
     env: python
+    plan: free
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "./start.sh"
+    startCommand: "python app.py"
     envVars:
       - key: GEMINI_API_KEY
+        # This tells Render to create a secret environment variable
+        # with this key. The value will be set in the dashboard.
         sync: false
-      - key: OCR_API_KEY
-        sync: false
+    # This block is optional but helps with debugging and preventing
+    # the free tier from sleeping while you are actively using it.
+    healthCheckPath: "/"
