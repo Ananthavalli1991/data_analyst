@@ -247,7 +247,7 @@ def process_request_worker(request_files, model_instance):
     return final_json_array
 
 # --- API Endpoint (Controller - Unchanged) ---
-
+app = Flask(__name__)
 @app.route('/api/', methods=['POST'])
 def data_analyst_agent():
     REQUEST_TIMEOUT = 295.0
