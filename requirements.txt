@@ -1,6 +1,10 @@
 Flask
+Pillow
 google-generativeai
 python-dotenv
-gunicorn
-requests
-pillow
+beautifulsoup4
+openpyxl
+PyPDF2
+pandas
+PyYAML
+waitress
