@@ -1,41 +1,33 @@
-# === Python-specific files ===
-
-# Virtual environment directory
-# This is crucial to avoid committing local dependencies.
-venv/
-.venv/
-
-# Byte-compiled files (from Python)
+# Python-specific files
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
 
-# Distribution and packaging
+# Environment variables
+.env
+.flaskenv
+
+# Log files and temporary data
+*.log
+data_analyst_api.sqlite
+*.db
+tmp/
+.vscode/
+
+# IDE/Editor specific files (adjust for your editor)
+.idea/
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Temporary output from development
 dist/
 build/
 *.egg-info/
 
-# Sensitive environment variables
-# This is the most important part to ensure you don't expose API keys.
-.env
-
-# === Operating System and Editor Files ===
-
-# macOS
-.DS_Store
-
-# Windows
-Thumbs.db
-
-# Visual Studio Code
-.vscode/
-
-# PyCharm/IntelliJ IDEs
-.idea/
-
-# === Project-specific files ===
-
-# Ignore temporary or user-uploaded files that are not part of the source code.
-# The `curl` command you used for testing creates these files.
-questions.txt
-image.png
-data.csv
+# Render-specific build files
+.render-cache/
