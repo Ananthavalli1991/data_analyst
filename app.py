@@ -148,8 +148,7 @@ CRITICAL INSTRUCTIONS:
 4. For strings, use double-quoted strings (e.g., "Titanic").
 5. ALWAYS create professional visualizations under 90KB
 6. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
-FINAL OUTPUT RULE:
-The final answer MUST be a valid JSON string. Do not print anything else - NO debugging prints, NO status messages, NO intermediate messages. For multi-part questions, the JSON can be a list. For questions that expect a dictionary, it must be a JSON object. The JSON MUST contain the EXACT keys specified in the user's request. Adhere strictly to the format requested in the user's prompt. 
+The JSON MUST contain the EXACT keys specified in the questions. Adhere strictly to the format requested in the questions. 
 
 CRITICAL KEY MATCHING:
 If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the answer MUST use those EXACT key names. Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
@@ -179,18 +178,33 @@ Return only the JSON object:
         return json.dumps({"error": f"Gemini API Error: {str(e)}"})
 
 def robust_json_parser(text_response):
-    # Try to extract JSON from the entire output
-    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+  if not text_response:
+        return {"error": "Empty response from model"}
+
+    # 1. Direct JSON parse attempt
+    try:
+        return json.loads(text_response.strip())
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Remove ```json fences if present
+    fenced = re.sub(r"^```(?:json)?|```$", "", text_response.strip(), flags=re.MULTILINE | re.DOTALL)
+    try:
+        return json.loads(fenced.strip())
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Extract JSON-like objects (first array or object)
+    json_pattern = r'(\{.*\}|\[.*\])'
     matches = re.findall(json_pattern, text_response, re.DOTALL)
-    
-    for match in reversed(matches):
+    for m in matches:
         try:
-            json.loads(match)
-            return match
-        except:
+            return json.loads(m.strip())
+        except Exception:
             continue
-    cleaned = re.search(r'```json\s*(\[.*\])\s*```', text_response, re.DOTALL)
-    return cleaned
+
+    # 4. Last fallback – return string so API doesn’t break
+    return {"error": "Could not parse JSON", "raw_output": text_response[:500]}
     """try:
         return json.loads(text_response.strip())
     except json.JSONDecodeError:
