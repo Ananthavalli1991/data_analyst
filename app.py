@@ -142,11 +142,11 @@ def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
     full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON array format.
 
 CRITICAL INSTRUCTIONS:
-1. Return ONLY a valid JSON array - nothing else.
+1. Return ONLY a valid JSON object - nothing else.
 2. Each answer should be an element in the array.
 3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
 4. For strings, use double-quoted strings (e.g., "Titanic").
-5. ALWAYS create professional visualizations under 90KB
+5. ALWAYS create professional visualizations under 100KB
 6. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
 The JSON MUST contain the EXACT keys specified in the questions. Adhere strictly to the format requested in the questions. 
 
@@ -154,8 +154,6 @@ CRITICAL KEY MATCHING:
 If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the answer MUST use those EXACT key names. Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
 
 Generate the PERFECT analysis that will impress with its thoroughness and accuracy.
-- For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
-- For strings, use double-quoted strings (e.g., "Titanic").
 
 --- Questions to Answer ---
 {questions}
@@ -163,7 +161,7 @@ Generate the PERFECT analysis that will impress with its thoroughness and accura
 --- Data Context ---
 {text_context}
 
-Return only the JSON object:
+Return only the JSON object
 """
 
     prompt_parts = [full_text_prompt] + image_parts
@@ -183,7 +181,7 @@ def robust_json_parser(text_response):
 
     def try_parse(candidate):
         try:
-            return json.loads(candidate.strip())
+            return json.loads(candidate.strip().split('\n')
         except Exception:
             return None
 
@@ -295,7 +293,7 @@ def data_analyst_agent():
             return jsonify(result), 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
-            return jsonify({"error":timeout}), 200
+            return jsonify({"error":"timeout"})
 
 
 # ------------------ Health Check ------------------
