@@ -1,5 +1,6 @@
 # app.py
-# Refactored Flask application for concurrent, time-limited data processing with IMAGE SUPPORT.
+# Refactored Flask application for concurrent, time-limited data processing.
+# Updated to use gemini-2.5-flash for high-speed, cost-effective analysis.
 
 import os
 import io
@@ -9,7 +10,7 @@ import concurrent.futures
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import requests
-# --- All your existing file handlers ---
+import base64
 import csv
 import xml.etree.ElementTree as ET
 import google.generativeai as genai
@@ -19,34 +20,37 @@ import PyPDF2
 import pandas as pd
 import yaml
 from google.api_core.exceptions import ResourceExhausted
-from PIL import Image # NEW: Import the Image module from Pillow
+from PIL import Image
 from dotenv import load_dotenv
+
+# Load environment variables from a .env file
 load_dotenv()
-GEMINI_API_KEY=os.environ.get("GEMINI_API_KEY")
 
 # --- API Key Configuration ---
+# NOTE: The original code used GEMINI_API_KEY. If you were to use a different
+# service that requires an AIPIPE_TOKEN, you would configure it here.
+# For this Gemini-based script, we continue to use the GEMINI_API_KEY.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Configure the Gemini API with the loaded key
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- CORRECTED: Model Fallback Function ---
+# --- Updated Model Initialization ---
 def get_gemini_model():
-    """Attempts to get the Pro model, falls back to Flash if it fails by making a test API call."""
+    """Initializes and returns the gemini-2.5-flash model for high-speed tasks."""
     try:
-        model = genai.GenerativeModel('gemini-2.5-pro')
-        # This is the crucial line to ensure the fallback works correctly.
-        # It makes a minimal API call to check for ResourceExhausted exception.
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        # A quick test to ensure the model is accessible
         model.generate_content("test")
-        print("Using gemini-2.5-pro model.")
+        print("Using gemini-2.5-flash model for high-speed tasks.")
         return model
-    except ResourceExhausted as e:
-        print(f"Rate limit hit for gemini-2.5-pro: {e}. Falling back to gemini-2.5-flash.")
-        return genai.GenerativeModel('gemini-2.5-flash')
     except Exception as e:
-        # Catch any other unexpected errors and fall back
-        print(f"An unexpected error occurred: {e}. Falling back to gemini-2.5-flash.")
-        return genai.GenerativeModel('gemini-2.5-flash')
+        # If model initialization or a test call fails, log the error.
+        print(f"An error occurred while initializing the model: {e}")
+        return None
 
 # --- File Handlers (with new image handler) ---
-
+# These functions are unchanged from your original script as they are robust.
 def handle_text_file(file_content): return file_content.decode('utf-8')
 def handle_html_file(file_content): return BeautifulSoup(file_content, 'html.parser').get_text(separator=' ', strip=True)
 def handle_markdown_file(file_content): return file_content.decode('utf-8')
@@ -102,44 +106,43 @@ def handle_yaml_file(file_content):
         return yaml.dump(data, sort_keys=False)
     except yaml.YAMLError as e:
         return f"Error processing YAML: {str(e)}"
-
-def handle_image_file(file_content):
-    """
-    Opens the image content using Pillow and returns the Image object.
-    """
+def handle_image_file(file_content, filename):
     try:
-        image = Image.open(io.BytesIO(file_content))
-        return image
+        if file_content.startswith(b'data:image'):
+            base64_data = file_content.split(b',')[1].decode('utf-8')
+            mime_type = file_content.split(b';')[0].split(b':')[1].decode('utf-8')
+            return ('image_url', {"mime_type": mime_type, "data": base64_data}, filename)
+        
+        img_bytes = io.BytesIO(file_content)
+        img_bytes.seek(0)
+        base64_data = base64.b64encode(img_bytes.read()).decode('utf-8')
+        mime_type = "image/png"
+        return ('image_url', {"mime_type": mime_type, "data": base64_data}, filename)
+        
     except Exception as e:
-        # If Pillow can't open it, return the error as a string
-        return f"Error processing image with Pillow: {str(e)}"
+        return ('text', f"Error processing image with Pillow or Base64 encoding: {str(e)}", filename)
 
-# MODIFIED: Added image file extensions
+# Mapping of file extensions to their respective handlers
 FILE_HANDLERS = {
-    # Text-based files
     '.txt': handle_text_file, '.html': handle_html_file, '.md': handle_markdown_file,
     '.csv': handle_csv_file, '.json': handle_json_file, '.pdf': handle_pdf_file,
     '.xlsx': handle_excel_file, '.xls': handle_excel_file, '.sql': handle_sql_file,
     '.xml': handle_xml_file, '.parquet': handle_parquet_file, '.yaml': handle_yaml_file,
-    # NEW: Image files
     '.png': handle_image_file, '.jpg': handle_image_file, '.jpeg': handle_image_file, '.webp': handle_image_file
 }
 
-IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'] # NEW: Helper list to identify image types
+IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp']
 
 # --- Core Logic Functions (Refactored for Multimodality) ---
-
-# MODIFIED: This function now accepts the model instance as an argument.
 def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
     if not gemini_model:
-        return json.dumps([{"error": "Gemini Model not initialized"}])
+        return json.dumps({"error": "Gemini Model not initialized"})
     
-    # Combine all text into a single prompt string
-    full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON array format.
-
+    # This prompt is the instruction for the AI. It's crucial for getting a good response.
+    full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON object format.
 CRITICAL INSTRUCTIONS:
-1. Return ONLY a valid JSON array - nothing else.
-2. Each answer should be an element in the array.
+1. Return ONLY a valid JSON object - nothing else.
+2. The JSON object should contain key-value pairs where the key is the key of question from the instructions (e.g., 'average_temp_c') and the value is the answer.
 3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
 4. For strings, use double-quoted strings (e.g., "Titanic").
 5. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
@@ -150,71 +153,66 @@ CRITICAL INSTRUCTIONS:
 --- Data Context ---
 {text_context}
 
-Return only the JSON array:"""
+Return only the JSON object:
+"""
 
-    # Build the final prompt list: [text, image1, image2, ...]
     prompt_parts = [full_text_prompt] + image_parts
     
     try:
         response = gemini_model.generate_content(
-            prompt_parts, # MODIFIED: Pass the list of parts
+            prompt_parts,
             generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
         )
         return response.text
     except Exception as e:
-        return json.dumps([f"Gemini API Error: {str(e)}"])
+        return json.dumps({"error": f"Gemini API Error: {str(e)}"})
 
 def robust_json_parser(text_response):
-    match = re.search(r'```json\s*(\[.*\])\s*```', text_response, re.DOTALL)
+    """Parses JSON from the model response, handling potential markdown wrappers."""
+    match = re.search(r'```json\s*(\{.*\})\s*```', text_response, re.DOTALL)
     if match:
         json_str = match.group(1)
     else:
         json_str = text_response.strip()
     try:
         parsed_json = json.loads(json_str)
-        if isinstance(parsed_json, list):
+        if isinstance(parsed_json, dict):
             return parsed_json
         else:
-            return [parsed_json]
+            return {"error": f"Model returned a non-object JSON: {text_response}"}
     except json.JSONDecodeError:
-        return [f"Failed to decode JSON from model response: {text_response}"]
+        return {"error": f"Failed to decode JSON from model response: {text_response}"}
 
-# MODIFIED: Returns a tuple indicating content type (text/image)
 def process_single_file(file_storage):
+    """Processes a single file based on its extension."""
     filename = file_storage.filename
     file_extension = os.path.splitext(filename)[1].lower()
     
     if file_extension in FILE_HANDLERS:
         try:
-            # IMPORTANT: Re-position the stream for each worker to read the full content
             file_storage.seek(0)
             file_content = file_storage.read()
             handler = FILE_HANDLERS[file_extension]
-            processed_data = handler(file_content)
-            
-            # Distinguish between image and text data
             if file_extension in IMAGE_EXTENSIONS:
-                return ('image', processed_data, filename)
+                return handler(file_content, filename)
             else:
+                processed_data = handler(file_content)
                 text_data = f"\n--- Content from {filename} ---\n{processed_data}\n"
                 return ('text', text_data, filename)
-
         except Exception as e:
             error_text = f"\n--- Error processing {filename}: {str(e)} ---\n"
-            return ('text', error_text, filename) # Return errors as text context
+            return ('text', error_text, filename)
             
-    return ('text', '', filename) # Return empty for unsupported files
+    return ('text', '', filename)
 
-# MODIFIED: Accepts model instance as argument
 def process_request_worker(request_files, model_instance):
-    # This ensures the file is only read once and can be passed to the thread pool
+    """A worker function to process the entire request."""
     questions_file_content = request_files['questions.txt'].read().decode('utf-8')
     questions = questions_file_content
     
     text_context_parts = []
     image_parts = []
     
-    # Exclude questions.txt from the list of files to process
     data_files = [f for k, f in request_files.items() if k != 'questions.txt']
     
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -222,29 +220,25 @@ def process_request_worker(request_files, model_instance):
         for future in concurrent.futures.as_completed(future_to_file):
             try:
                 content_type, data, filename = future.result()
-                if content_type == 'image':
-                    # Append Pillow Image object to image_parts list
-                    if isinstance(data, Image.Image):
-                        image_parts.append(data)
-                    else: # Handle case where image processing failed
-                        text_context_parts.append(f"\n--- Content from {filename} ---\n{data}\n")
+                if content_type == 'image_url':
+                    image_parts.append(genai.types.Part.from_data(
+                        data=data["data"], 
+                        mime_type=data["mime_type"]
+                    ))
                 else:
-                    # Append text string to text_context_parts list
                     text_context_parts.append(data)
             except Exception as e:
                 filename = future_to_file[future].filename
                 print(f"Error processing file {filename} in thread: {e}")
                 text_context_parts.append(f"\n--- Exception processing {filename}: {e} ---\n")
 
-    # Join all text parts into a single string
     final_text_context = "".join(text_context_parts)
     
-    # Pass separated text and image data to Gemini
     analysis_result_text = analyze_with_gemini(questions, final_text_context, image_parts, model_instance)
     
-    final_json_array = robust_json_parser(analysis_result_text)
+    final_json_object = robust_json_parser(analysis_result_text)
     
-    return final_json_array
+    return final_json_object
 
 # --- API Endpoint (Controller - Unchanged) ---
 app = Flask(__name__)
@@ -255,30 +249,24 @@ def data_analyst_agent():
     if 'questions.txt' not in request.files:
         return jsonify({"error": "questions.txt file is required."}), 400
         
-    # Get the model instance with the fallback logic
     model_instance = get_gemini_model() 
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        # Pass both request.files and the model_instance to the worker function
         future = executor.submit(process_request_worker, request.files, model_instance)
         try:
             result = future.result(timeout=REQUEST_TIMEOUT)
             return jsonify(result), 200
         except concurrent.futures.TimeoutError:
             print("Request processing timed out. Returning timeout response.")
-            # Read the questions file again to determine the number of questions.
-            questions_content = request.files['questions.txt'].read().decode('utf-8')
-            num_questions = len(questions_content.splitlines())
-            timeout_response = ["TIMEOUT" for _ in range(num_questions)]
+            timeout_response = {"error": "TIMEOUT"}
             return jsonify(timeout_response), 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
 # ------------------ Main (for running with a production server) ------------------
-
 if __name__ == '__main__':
     from waitress import serve
     port = int(os.environ.get('PORT', 5000))
     print(f"Starting server on http://0.0.0.0:{port}")
-    serve(app, host='0.0.0.0', port=port, threads=8)
+    serve(app, host='0.0.0.0', port=port, threads=16)
