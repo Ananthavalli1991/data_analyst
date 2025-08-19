@@ -179,7 +179,31 @@ Return only the JSON object:
         return json.dumps({"error": f"Gemini API Error: {str(e)}"})
 
 def robust_json_parser(text_response):
-    try:
+    output = text_response.strip().split('\n')
+    
+    # Look for the last line that looks like JSON
+    for res in reversed(output):
+        res = res.strip()
+        if res.startswith('{') and res.endswith('}'):
+            try:
+                json.loads(res)
+                return res
+            except:
+                continue
+    
+    # Try to extract JSON from the entire output
+    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+    matches = re.findall(json_pattern, text_response, re.DOTALL)
+    
+    for match in reversed(matches):
+        try:
+            json.loads(match)
+            return match
+        except:
+            continue
+    cleaned = re.search(r'```json\s*(\[.*\])\s*```', text_response, re.DOTALL)
+    return cleaned
+    """try:
         return json.loads(text_response.strip())
     except json.JSONDecodeError:
         # Try removing markdown fences if present
@@ -187,7 +211,7 @@ def robust_json_parser(text_response):
         try:
             return json.loads(cleaned.strip())
         except Exception:
-           return text_response
+           return text_response"""
 
 def process_single_file(file_storage):
     """Processes a single file based on its extension."""
@@ -268,7 +292,7 @@ def data_analyst_agent():
             return jsonify(result), 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
-            return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
+            return jsonify({"error":"{timeout}"), 200
 
 
 # ------------------ Health Check ------------------
