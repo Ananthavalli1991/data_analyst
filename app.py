@@ -179,18 +179,6 @@ Return only the JSON object:
         return json.dumps({"error": f"Gemini API Error: {str(e)}"})
 
 def robust_json_parser(text_response):
-    output = text_response.strip().split('\n')
-    
-    # Look for the last line that looks like JSON
-    for res in reversed(output):
-        res = res.strip()
-        if res.startswith('{') and res.endswith('}'):
-            try:
-                json.loads(res)
-                return res
-            except:
-                continue
-    
     # Try to extract JSON from the entire output
     json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
     matches = re.findall(json_pattern, text_response, re.DOTALL)
