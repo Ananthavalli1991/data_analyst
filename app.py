@@ -178,7 +178,7 @@ Return only the JSON object:
         return json.dumps({"error": f"Gemini API Error: {str(e)}"})
 
 def robust_json_parser(text_response):
-  if not text_response:
+    if not text_response:
         return {"error": "Empty response from model"}
 
     # 1. Direct JSON parse attempt
