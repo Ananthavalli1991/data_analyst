@@ -181,7 +181,7 @@ def robust_json_parser(text_response):
 
     def try_parse(candidate):
         try:
-            return json.loads(candidate.strip().split('\n')
+            return json.loads(candidate.strip().split('\n'))
         except Exception:
             return None
 
