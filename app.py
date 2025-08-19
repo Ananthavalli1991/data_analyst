@@ -141,18 +141,14 @@ def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
     # This prompt is the instruction for the AI. It's crucial for getting a good response.
     full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON array format.
 
-MANDATORY SUCCESS CRITERIA:
--ALWAYS inspect actual columns with df.columns and df.head() FIRST (but don't print them)
--ALWAYS include comprehensive error handling
--ALWAYS create professional visualizations under 100KB
--ALWAYS output valid JSON with EXACT keys requested
--ALWAYS include meaningful insights
--ALWAYS handle edge cases gracefully
--NEVER assume column names - always discover them dynamically
--NEVER leave analysis incomplete
-
+CRITICAL INSTRUCTIONS:
+1. Return ONLY a valid JSON array - nothing else.
+2. Each answer should be an element in the array.
+3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
+4. For strings, use double-quoted strings (e.g., "Titanic").
+5. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
 FINAL OUTPUT RULE:
-The final output MUST be a valid JSON string. Do not print anything else - NO debugging prints, NO status messages, NO intermediate outputs. For multi-part questions, the JSON can be a list. For questions that expect a dictionary, it must be a JSON object. The JSON MUST contain the EXACT keys specified in the user's request. Adhere strictly to the format requested in the user's prompt. 
+The final answer MUST be a valid JSON string. Do not print anything else - NO debugging prints, NO status messages, NO intermediate messages. For multi-part questions, the JSON can be a list. For questions that expect a dictionary, it must be a JSON object. The JSON MUST contain the EXACT keys specified in the user's request. Adhere strictly to the format requested in the user's prompt. 
 
 CRITICAL KEY MATCHING:
 If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the output MUST use those EXACT key names. Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
@@ -182,22 +178,15 @@ Return only the JSON object:
         return json.dumps({"error": f"Gemini API Error: {str(e)}"})
 
 def robust_json_parser(text_response):
-    """Parses JSON from the model response, handling potential markdown wrappers."""
-    json_pattern = r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}"
-    matches = re.findall(json_pattern, output, re.DOTALL)
-    #match = re.search(r'```json\s*(\{.*\})\s*```', text_response, re.DOTALL)
-    if match:
-        json_str =json.loads(match)                #match.group(1)
-    else:
-        json_str = text_response.strip()
     try:
-        parsed_json = json.loads(json_str)
-        if isinstance(parsed_json, dict):
-            return parsed_json
-        else:
-            return json_str
+        return json.loads(text_response.strip())
     except json.JSONDecodeError:
-        return text_response
+        # Try removing markdown fences if present
+        cleaned = re.sub(r"^```json|```$", "", text_response.strip(), flags=re.MULTILINE)
+        try:
+            return json.loads(cleaned.strip())
+        except Exception:
+           return text_response
 
 def process_single_file(file_storage):
     """Processes a single file based on its extension."""
