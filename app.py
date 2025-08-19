@@ -139,13 +139,27 @@ def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
         return json.dumps({"error": "Gemini Model not initialized"})
     
     # This prompt is the instruction for the AI. It's crucial for getting a good response.
-    full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON object format.
-CRITICAL INSTRUCTIONS:
-1. Return ONLY a valid JSON object - nothing else.
-2. The JSON object should contain key-value pairs where the key is the key of question from the instructions (e.g., 'average_temp_c') and the value is the answer.
-3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
-4. For strings, use double-quoted strings (e.g., "Titanic").
-5. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
+    full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON array format.
+
+MANDATORY SUCCESS CRITERIA:
+-ALWAYS inspect actual columns with df.columns and df.head() FIRST (but don't print them)
+-ALWAYS include comprehensive error handling
+-ALWAYS create professional visualizations under 100KB
+-ALWAYS output valid JSON with EXACT keys requested
+-ALWAYS include meaningful insights
+-ALWAYS handle edge cases gracefully
+-NEVER assume column names - always discover them dynamically
+-NEVER leave analysis incomplete
+
+FINAL OUTPUT RULE:
+The final output MUST be a valid JSON string. Do not print anything else - NO debugging prints, NO status messages, NO intermediate outputs. For multi-part questions, the JSON can be a list. For questions that expect a dictionary, it must be a JSON object. The JSON MUST contain the EXACT keys specified in the user's request. Adhere strictly to the format requested in the user's prompt. 
+
+CRITICAL KEY MATCHING:
+If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the output MUST use those EXACT key names. Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
+
+Generate the PERFECT analysis that will impress with its thoroughness and accuracy.
+- For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
+- For strings, use double-quoted strings (e.g., "Titanic").
 
 --- Questions to Answer ---
 {questions}
@@ -169,9 +183,11 @@ Return only the JSON object:
 
 def robust_json_parser(text_response):
     """Parses JSON from the model response, handling potential markdown wrappers."""
-    match = re.search(r'```json\s*(\{.*\})\s*```', text_response, re.DOTALL)
+    json_pattern = r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}"
+    matches = re.findall(json_pattern, output, re.DOTALL)
+    #match = re.search(r'```json\s*(\{.*\})\s*```', text_response, re.DOTALL)
     if match:
-        json_str = match.group(1)
+        json_str =json.loads(match)                #match.group(1)
     else:
         json_str = text_response.strip()
     try:
@@ -179,9 +195,9 @@ def robust_json_parser(text_response):
         if isinstance(parsed_json, dict):
             return parsed_json
         else:
-            return {"error": f"Model returned a non-object JSON: {text_response}"}
+            return json_str
     except json.JSONDecodeError:
-        return {"error": f"Failed to decode JSON from model response: {text_response}"}
+        return text_response
 
 def process_single_file(file_storage):
     """Processes a single file based on its extension."""
@@ -244,7 +260,7 @@ def process_request_worker(request_files, model_instance):
 app = Flask(__name__)
 @app.route('/api/', methods=['POST'])
 def data_analyst_agent():
-    REQUEST_TIMEOUT = 295.0
+    REQUEST_TIMEOUT = 300.0
     
     if 'questions.txt' not in request.files:
         return jsonify({"error": "questions.txt file is required."}), 400
@@ -269,4 +285,4 @@ if __name__ == '__main__':
     from waitress import serve
     port = int(os.environ.get('PORT', 5000))
     print(f"Starting server on http://0.0.0.0:{port}")
-    serve(app, host='0.0.0.0', port=port, threads=16)
+    serve(app, host='0.0.0.0', port=port, threads=8)
