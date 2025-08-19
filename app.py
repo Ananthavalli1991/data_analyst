@@ -146,12 +146,13 @@ CRITICAL INSTRUCTIONS:
 2. Each answer should be an element in the array.
 3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
 4. For strings, use double-quoted strings (e.g., "Titanic").
-5. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
+5. ALWAYS create professional visualizations under 90KB
+6. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
 FINAL OUTPUT RULE:
 The final answer MUST be a valid JSON string. Do not print anything else - NO debugging prints, NO status messages, NO intermediate messages. For multi-part questions, the JSON can be a list. For questions that expect a dictionary, it must be a JSON object. The JSON MUST contain the EXACT keys specified in the user's request. Adhere strictly to the format requested in the user's prompt. 
 
 CRITICAL KEY MATCHING:
-If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the output MUST use those EXACT key names. Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
+If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the answer MUST use those EXACT key names. Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
 
 Generate the PERFECT analysis that will impress with its thoroughness and accuracy.
 - For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
@@ -246,28 +247,35 @@ def process_request_worker(request_files, model_instance):
     return final_json_object
 
 # --- API Endpoint (Controller - Unchanged) ---
+from flask import Flask, request, jsonify
+import concurrent.futures
+import os
+
 app = Flask(__name__)
+
 @app.route('/api/', methods=['POST'])
 def data_analyst_agent():
-    REQUEST_TIMEOUT = 300.0
-    
     if 'questions.txt' not in request.files:
         return jsonify({"error": "questions.txt file is required."}), 400
-        
-    model_instance = get_gemini_model() 
 
+    model_instance = get_gemini_model()
+
+    # No timeout anymore
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(process_request_worker, request.files, model_instance)
         try:
-            result = future.result(timeout=REQUEST_TIMEOUT)
+            result = future.result() 
             return jsonify(result), 200
-        except concurrent.futures.TimeoutError:
-            print("Request processing timed out. Returning timeout response.")
-            timeout_response = {"error": "TIMEOUT"}
-            return jsonify(timeout_response), 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
+
+
+# ------------------ Health Check ------------------
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "ok"}), 200
+
 
 # ------------------ Main (for running with a production server) ------------------
 if __name__ == '__main__':
@@ -275,3 +283,5 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"Starting server on http://0.0.0.0:{port}")
     serve(app, host='0.0.0.0', port=port, threads=8)
+
+
