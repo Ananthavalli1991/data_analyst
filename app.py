@@ -292,7 +292,7 @@ def data_analyst_agent():
             return jsonify(result), 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
-            return jsonify({"error":"{timeout}"), 200
+            return jsonify({"error":{timeout}), 200
 
 
 # ------------------ Health Check ------------------
