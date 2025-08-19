@@ -181,39 +181,40 @@ def robust_json_parser(text_response):
     if not text_response:
         return {"error": "Empty response from model"}
 
-    # 1. Direct JSON parse attempt
-    try:
-        return json.loads(text_response.strip())
-    except json.JSONDecodeError:
-        pass
+    def try_parse(candidate):
+        try:
+            return json.loads(candidate.strip())
+        except Exception:
+            return None
 
-    # 2. Remove ```json fences if present
+    # Direct parse
+    parsed = try_parse(text_response)
+    if parsed is not None:
+        # If response is a list with a single object, unwrap it
+        if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
+            return parsed[0]
+        return parsed
+
+    # Remove ```json fences if present
     fenced = re.sub(r"^```(?:json)?|```$", "", text_response.strip(), flags=re.MULTILINE | re.DOTALL)
-    try:
-        return json.loads(fenced.strip())
-    except json.JSONDecodeError:
-        pass
+    parsed = try_parse(fenced)
+    if parsed is not None:
+        if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
+            return parsed[0]
+        return parsed
 
-    # 3. Extract JSON-like objects (first array or object)
+    # Extract first JSON-like object/array
     json_pattern = r'(\{.*\}|\[.*\])'
     matches = re.findall(json_pattern, text_response, re.DOTALL)
     for m in matches:
-        try:
-            return json.loads(m.strip())
-        except Exception:
-            continue
+        parsed = try_parse(m)
+        if parsed is not None:
+            if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
+                return parsed[0]
+            return parsed
 
-    # 4. Last fallback – return string so API doesn’t break
-    return {"error": "Could not parse JSON", "raw_output": text_response[:500]}
-    """try:
-        return json.loads(text_response.strip())
-    except json.JSONDecodeError:
-        # Try removing markdown fences if present
-        cleaned = re.sub(r"^```json|```$", "", text_response.strip(), flags=re.MULTILINE)
-        try:
-            return json.loads(cleaned.strip())
-        except Exception:
-           return text_response"""
+    # Last fallback
+    return text_response.strip()
 
 def process_single_file(file_storage):
     """Processes a single file based on its extension."""
