@@ -179,18 +179,32 @@ def robust_json_parser(text_response):
     if not isinstance(text_response, str):
         text_response = str(text_response)
 
-    # Remove ```json ... ``` fences
-    cleaned = re.sub(r"^```(?:json)?|```$", "", text_response.strip(), flags=re.MULTILINE | re.DOTALL)
+    # Remove ```json fences
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text_response.strip(),
+                     flags=re.MULTILINE | re.DOTALL)
 
+    parsed = None
     try:
-        return json.loads(cleaned)
+        parsed = json.loads(cleaned)
     except Exception:
-        # Fallback: try to locate JSON substring
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        # Capture full JSON array or object, even multiline
+        match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", cleaned)
         if match:
-            return json.loads(match.group(0))
-        return {"error": "Could not parse JSON", "raw_output": text_response}
-    
+            try:
+                parsed = json.loads(match.group(0))
+            except Exception:
+                return {"error": "Could not parse JSON", "raw_output": text_response}
+        else:
+            return {"error": "Could not parse JSON", "raw_output": text_response}
+
+    # --- Normalization ---
+    if isinstance(parsed, dict):       # already JSON object
+        return parsed
+    if isinstance(parsed, list):       # already JSON array
+        return parsed
+
+    # Primitive → wrap into array so still valid JSON
+    return parsed
         
 
 def process_single_file(file_storage):
