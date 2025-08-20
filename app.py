@@ -142,16 +142,16 @@ def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
     full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON array format.
 
 CRITICAL INSTRUCTIONS:
-1. Return ONLY a valid JSON object - nothing else.
-2. Each answer should be an element in the array.
+1. Return ONLY a valid JSON array of answer - nothing else.
+2. Each answer should be an element in the json array.
 3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
 4. For strings, use double-quoted strings (e.g., "Titanic").
 5. ALWAYS create professional visualizations under 100KB
 6. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
-The JSON MUST contain the EXACT keys specified in the questions. Adhere strictly to the format requested in the questions. 
+
 
 CRITICAL KEY MATCHING:
-If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the answer MUST use those EXACT key names. Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
+If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the answer MUST use those EXACT key names. return this answer as json object within json array.Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
 
 Generate the PERFECT analysis that will impress with its thoroughness and accuracy.
 
@@ -161,7 +161,7 @@ Generate the PERFECT analysis that will impress with its thoroughness and accura
 --- Data Context ---
 {text_context}
 
-Return only the JSON object
+Return only the JSON array of elements.
 """
 
     prompt_parts = [full_text_prompt] + image_parts
@@ -176,43 +176,22 @@ Return only the JSON object
         return json.dumps({"error": f"Gemini API Error: {str(e)}"})
 
 def robust_json_parser(text_response):
-    if not text_response:
-        return {"error": "Empty response from model"}
+    if not isinstance(text_response, str):
+        text_response = str(text_response)
 
-    def try_parse(candidate):
-        try:
-            return json.loads(candidate.strip().split('\n'))
-        except Exception:
-            return None
+    # Remove ```json ... ``` fences
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text_response.strip(), flags=re.MULTILINE | re.DOTALL)
 
-    # Direct parse
-    parsed = try_parse(text_response)
-    if parsed is not None:
-        # If response is a list with a single object, unwrap it
-        if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
-            return parsed[0]
-        return parsed
-
-    # Remove ```json fences if present
-    fenced = re.sub(r"^```(?:json)?|```$", "", text_response.strip(), flags=re.MULTILINE | re.DOTALL)
-    parsed = try_parse(fenced)
-    if parsed is not None:
-        if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
-            return parsed[0]
-        return parsed
-
-    # Extract first JSON-like object/array
-    json_pattern = r'(\{.*\}|\[.*\])'
-    matches = re.findall(json_pattern, text_response, re.DOTALL)
-    for m in matches:
-        parsed = try_parse(m)
-        if parsed is not None:
-            if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
-                return parsed[0]
-            return parsed
-
-    # Last fallback
-    return text_response.strip()
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        # Fallback: try to locate JSON substring
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return {"error": "Could not parse JSON", "raw_output": text_response}
+    
+        
 
 def process_single_file(file_storage):
     """Processes a single file based on its extension."""
@@ -290,7 +269,13 @@ def data_analyst_agent():
         future = executor.submit(process_request_worker, request.files, model_instance)
         try:
             result = future.result() 
-            return jsonify(result), 200
+            if isinstance(result, list):
+                print("✅ Result is a JSON array")
+            elif isinstance(result, dict):
+                print("✅ Result is a JSON object")
+            else:
+                print("⚠️ Result is neither array nor object:", type(result))
+            return json.dumps(result), 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             return jsonify({"error":"timeout"})
@@ -308,5 +293,3 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"Starting server on http://0.0.0.0:{port}")
     serve(app, host='0.0.0.0', port=port, threads=8)
-
-
