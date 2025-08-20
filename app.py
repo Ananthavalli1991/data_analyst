@@ -193,9 +193,10 @@ def robust_json_parser(text_response):
             try:
                 parsed = json.loads(match.group(0))
             except Exception:
-                return {"error": "Could not parse JSON", "raw_output": text_response}
-        else:
-            return {"error": "Could not parse JSON", "raw_output": text_response}
+                #return {"error": "Could not parse JSON", "raw_output": text_response}
+                pass
+        #else:
+            #return {"error": "Could not parse JSON", "raw_output": text_response}
 
     # --- Normalization ---
     if isinstance(parsed, dict):       # already JSON object
