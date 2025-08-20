@@ -193,10 +193,9 @@ def robust_json_parser(text_response):
             try:
                 parsed = json.loads(match.group(0))
             except Exception:
-                #return {"error": "Could not parse JSON", "raw_output": text_response}
-                pass
-        #else:
-            #return {"error": "Could not parse JSON", "raw_output": text_response}
+               return parsed
+        else:
+            return parsed
 
     # --- Normalization ---
     if isinstance(parsed, dict):       # already JSON object
@@ -290,7 +289,7 @@ def data_analyst_agent():
                 print("✅ Result is a JSON object")
             else:
                 print("⚠️ Result is neither array nor object:", type(result))
-            return result, 200
+            return jsonify(result), 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             return jsonify({"error":str(e)})
