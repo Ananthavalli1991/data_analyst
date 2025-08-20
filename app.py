@@ -266,7 +266,7 @@ def process_request_worker(request_files, model_instance):
     
     analysis_result_text = analyze_with_gemini(questions, final_text_context, image_parts, model_instance)
     
-    final_json_object = robust_json_parser(analysis_result_text)
+    final_json_object =analysis_result_text                             #robust_json_parser(analysis_result_text)
     
     return final_json_object
 
