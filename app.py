@@ -180,8 +180,12 @@ def robust_json_parser(text_response):
         text_response = str(text_response)
 
     # Remove ```json fences
-    cleaned = re.sub(r"^```(?:json)?|```$", "", text_response.strip(),
-                     flags=re.MULTILINE | re.DOTALL)
+    cleaned = re.sub(
+        r"^```(?:json)?|```$",
+        "",
+        text_response.strip(),
+        flags=re.MULTILINE | re.DOTALL
+    )
 
     parsed = None
     try:
@@ -193,11 +197,11 @@ def robust_json_parser(text_response):
         if match:
             candidate = match.group(0).strip()
             try:
-                parsed = json.loads(candidate)
-            except Exception as e:
-                return jsonify(candidate)
+                parsed = json.loads(candidate)   # ✅ FIXED: no {"data": ...}
+            except Exception:
+                return candidate
         else:
-            return jsonify(text_response+"}")
+            return text_response
 
     # --- Normalization ---
     if isinstance(parsed, dict):
