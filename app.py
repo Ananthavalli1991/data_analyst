@@ -185,25 +185,27 @@ def robust_json_parser(text_response):
 
     parsed = None
     try:
+        # First, try direct JSON parse
         parsed = json.loads(cleaned)
     except Exception:
-        # Capture full JSON array or object, even multiline
-        match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", cleaned)
+        # Try to extract the largest JSON-looking block (object or array)
+        match = re.search(r"(\{.*\}|\[.*\])", cleaned, flags=re.DOTALL)
         if match:
+            candidate = match.group(0).strip()
             try:
-                parsed = json.loads(match.group(0))
-            except Exception:
-               return parsed
+                parsed = json.loads(candidate)
+            except Exception as e:
+                return jsonify(candidate)
         else:
-            return parsed
+            return jsonify(text_response+"}")
 
     # --- Normalization ---
-    if isinstance(parsed, dict):       # already JSON object
+    if isinstance(parsed, dict):
         return parsed
-    if isinstance(parsed, list):       # already JSON array
+    if isinstance(parsed, list):
         return parsed
 
-    # Primitive → wrap into array so still valid JSON
+    # Primitive → wrap into array
     return [parsed]
         
 
