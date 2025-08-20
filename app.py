@@ -139,11 +139,11 @@ def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
         return json.dumps({"error": "Gemini Model not initialized"})
     
     # This prompt is the instruction for the AI. It's crucial for getting a good response.
-    full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON array format.
+    full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON format.
 
 CRITICAL INSTRUCTIONS:
-1. Return ONLY a valid JSON array of answer - nothing else.
-2. Each answer should be an element in the json array.
+1. Return a valid JSON array of answer or json object - nothing else.if answer require singe answer,return it with json array.if answer require key:value pair of answer, return it with json object.
+2. Each answer should be an element in the json array or json object.
 3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
 4. For strings, use double-quoted strings (e.g., "Titanic").
 5. ALWAYS create professional visualizations under 100KB
@@ -161,7 +161,7 @@ Generate the PERFECT analysis that will impress with its thoroughness and accura
 --- Data Context ---
 {text_context}
 
-Return only the JSON array of elements.
+Return the JSON array or the JSON object based on question requirements.dont return incomplete structure of answer.dont return anything other than answer.
 """
 
     prompt_parts = [full_text_prompt] + image_parts
