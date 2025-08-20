@@ -204,7 +204,7 @@ def robust_json_parser(text_response):
         return parsed
 
     # Primitive → wrap into array so still valid JSON
-    return parsed
+    return [parsed]
         
 
 def process_single_file(file_storage):
@@ -289,10 +289,10 @@ def data_analyst_agent():
                 print("✅ Result is a JSON object")
             else:
                 print("⚠️ Result is neither array nor object:", type(result))
-            return json.dumps(result), 200
+            return result, 200
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
-            return jsonify({"error":"timeout"})
+            return jsonify({"error":str(e)})
 
 
 # ------------------ Health Check ------------------
