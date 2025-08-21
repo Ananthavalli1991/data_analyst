@@ -10,8 +10,11 @@ import concurrent.futures
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import requests
+import traceback
 import base64
 import csv
+import matplotlib.pyplot as plt
+import pandas as pd
 import xml.etree.ElementTree as ET
 import google.generativeai as genai
 from bs4 import BeautifulSoup
@@ -132,28 +135,29 @@ FILE_HANDLERS = {
 }
 
 IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp']
-
+def plot_to_base64():
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    plt.close()
+    buf.seek(0)
+    encoded = base64.b64encode(buf.read()).decode("utf-8")
+    return f"data:image/png;base64,{encoded}"
 # --- Core Logic Functions (Refactored for Multimodality) ---
 def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
     if not gemini_model:
         return json.dumps({"error": "Gemini Model not initialized"})
     
     # This prompt is the instruction for the AI. It's crucial for getting a good response.
-    full_text_prompt = f"""You are a precise data analyst. Your task is to analyze the provided data (which includes text and images) and answer the questions with EXACT JSON format.
-
-CRITICAL INSTRUCTIONS:
-1. Return a valid JSON array of answer or json object - nothing else.if answer require singe answer,return it with json array.if answer require key:value pair of answer, return it with json object.
-2. Each answer should be an element in the json array or json object.
-3. For numbers or decimals, use numeric types (e.g., 42, 0.485782), not strings.
-4. For strings, use double-quoted strings (e.g., "Titanic").
-5. ALWAYS create professional visualizations under 100KB
-6. Do NOT include any explanations, comments, or markdown formatting like ```json or ```.
-
-
-CRITICAL KEY MATCHING:
-If the user specifies exact JSON keys (e.g., "Return a JSON object with keys: total_sales, top_region"), the answer MUST use those EXACT key names. return this answer as json object within json array.Do NOT use similar keys like "total_revenue" instead of "total_sales" or "average_temperature" instead of "average_temp_c". The evaluation system expects precise key matching.
-
-Generate the PERFECT analysis that will impress with its thoroughness and accuracy.
+    full_text_prompt =  f""" You are an intelligent data analyst. Your ONLY task is to return a valid JSON response that answers the questions using the provided data (which may include text and images). 
+STRICT RULES:
+- Answer strictly as a JSON. 
+- If answer is number, then return it as number.dont wrab number with quotes.
+- Strings must always be quoted and properly escaped. 
+- Visualizations must be returned as 100kb base64-encoded strings inside the JSON. Always avoid untermination.
+- Do NOT include any explanations, comments, text, or code before or after the JSON.
+- Do NOT use markdown formatting or code fences.
+- You should return your response which is in correct json syntax.
 
 --- Questions to Answer ---
 {questions}
@@ -161,57 +165,61 @@ Generate the PERFECT analysis that will impress with its thoroughness and accura
 --- Data Context ---
 {text_context}
 
-Return the JSON array or the JSON object based on question requirements.dont return incomplete structure of answer.dont return anything other than answer.
+Return ONLY a valid JSON.
 """
-
     prompt_parts = [full_text_prompt] + image_parts
-    
     try:
         response = gemini_model.generate_content(
             prompt_parts,
-            generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
+            generation_config={"response_mime_type": "application/json"}
         )
         return response.text
     except Exception as e:
         return json.dumps({"error": f"Gemini API Error: {str(e)}"})
+def robust_json_parser(text_response: str):
+    """
+    Cleans LLM output and extracts JSON safely.
+    Ensures final result is always valid JSON (object or array).
+    """
+    import json, re
 
-def robust_json_parser(text_response):
     if not isinstance(text_response, str):
         text_response = str(text_response)
 
-    # Remove ```json fences
-    cleaned = re.sub(
-        r"^```(?:json)?|```$",
-        "",
-        text_response.strip(),
-        flags=re.MULTILINE | re.DOTALL
-    )
+    # Step 1: Strip markdown fences and leading/trailing spaces
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text_response.strip(),
+                     flags=re.MULTILINE | re.DOTALL).strip()
+     # Step 4: Balance brackets (in case output is cut off)
+    if cleaned.startswith("[") and not cleaned.endswith("]"):
+        cleaned += '"]'
+    elif cleaned.startswith("{") and not cleaned.endswith("}"):
+        cleaned +='"}'
 
-    parsed = None
+    # Step 2: Try to locate the first JSON object/array inside the text
+    match = re.search(r'(\{.*\}|\[.*\])', cleaned, re.DOTALL)
+    if match:
+        cleaned = match.group(1)
+
+    # Step 3: Cleanup common issues
+    cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)   # remove trailing commas
+    cleaned = cleaned.replace("\n", "").replace("\r", "")  # flatten newlines
+    cleaned = cleaned.replace("'", '"')  # replace single quotes with double
+    
+    # Step 5: Attempt JSON parsing
     try:
-        # First, try direct JSON parse
-        parsed = json.loads(cleaned)
-    except Exception:
-        # Try to extract the largest JSON-looking block (object or array)
-        match = re.search(r"(\{.*\}|\[.*\])", cleaned, flags=re.DOTALL)
-        if match:
-            candidate = match.group(0).strip()
-            try:
-                parsed = json.loads(candidate)   # ✅ FIXED: no {"data": ...}
-            except Exception:
-                return task_respose
-        else:
-            return text_response
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        # Final fallback: try to recover with regex fixes
+        try:
+            fixed = re.sub(r'\\(?!["\\/bfnrt])', r"\\\\", cleaned)  # escape bad backslashes
+            return json.loads(fixed)
+        except Exception:
+            return {
+                "error": "Could not parse JSON",
+                "details": str(e),
+                "raw_snippet": cleaned  # show first 200 chars for debugging
+            }
 
-    # --- Normalization ---
-    if isinstance(parsed, dict):
-        return parsed
-    if isinstance(parsed, list):
-        return parsed
-
-    # Primitive → wrap into array
-    return [parsed]
-        
 
 def process_single_file(file_storage):
     """Processes a single file based on its extension."""
@@ -266,7 +274,7 @@ def process_request_worker(request_files, model_instance):
     
     analysis_result_text = analyze_with_gemini(questions, final_text_context, image_parts, model_instance)
     
-    final_json_object =robust_json_parser(analysis_result_text)
+    final_json_object = robust_json_parser(analysis_result_text)
     
     return final_json_object
 
