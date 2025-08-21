@@ -13,7 +13,6 @@ import requests
 import traceback
 import base64
 import csv
-import matplotlib.pyplot as plt
 import pandas as pd
 import xml.etree.ElementTree as ET
 import google.generativeai as genai
@@ -135,14 +134,6 @@ FILE_HANDLERS = {
 }
 
 IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp']
-def plot_to_base64():
-    buf = io.BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png", bbox_inches="tight")
-    plt.close()
-    buf.seek(0)
-    encoded = base64.b64encode(buf.read()).decode("utf-8")
-    return f"data:image/png;base64,{encoded}"
 # --- Core Logic Functions (Refactored for Multimodality) ---
 def analyze_with_gemini(questions, text_context, image_parts, gemini_model):
     if not gemini_model:
