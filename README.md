@@ -1,20 +1,23 @@
 # data_analyst
+
 This repository was created for sourcing , processing and analyzing any data 
 
-##Data Analyst 
+##Data Analyst
+
 This project is a web-based data analyst agent built with Flask and the Gemini API. It can process and analyze data from various file formats, including text, CSV, JSON, and images, in response to a set of questions provided by the user.
 
 ##Features
 
-   ###Multi-File Processing: Accepts multiple files in a single request, including .txt, .csv, .json, and image files (.png, .jpg, .jpeg).
+   ### Multi-File Processing: Accepts multiple files in a single request, including .txt, .csv, .json, and image files (.png, .jpg, .jpeg).
 
-   ###Gemini API Integration: Utilizes the Gemini API to analyze the provided data context and answer questions.
+   ### Gemini API Integration: Utilizes the Gemini API to analyze the provided data context and answer questions.
 
 ##External OCR Integration: Uses an external OCR service (like OCR.space) to extract text from image files, which is then sent to the Gemini model for analysis.
 
    ###JSON Output: The agent's response is a clean, structured JSON array, making it easy for other applications to parse and use.
 
 ##Prerequisites
+
 Before you begin, ensure you have the following installed on your machine:
 
 Python 3.8 or higher
@@ -22,6 +25,7 @@ Python 3.8 or higher
 pip (Python package installer)
 
 ##Setup and Installation
+
 Clone the Repository:
 
    git clone https://github.com/Ananthavalli1991/data_analyst.git
